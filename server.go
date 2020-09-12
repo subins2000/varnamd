@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -38,6 +39,10 @@ func startDaemon(app *App) {
 
 func initHandlers(app *App) (*echo.Echo, error) {
 	e := echo.New()
+	if !web {
+		fmt.Printf("Server started at %d", port)
+		e.Logger.SetOutput(ioutil.Discard)
+	}
 
 	e.GET("/tl/:langCode/:word", handleTransliteration)
 	e.GET("/rtl/:langCode/:word", handleReverseTransliteration)

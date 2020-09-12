@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/webview/webview"
 )
 
 var (
@@ -28,6 +30,7 @@ var (
 	syncIntervalInSecs     int
 	upstreamURL            string
 	syncDispatcherRunning  bool
+	web                    bool
 )
 
 // App is a singleton to share across handlers.
@@ -125,6 +128,7 @@ func init() {
 	flag.IntVar(&syncIntervalInSecs, "sync-interval", 30, "Download interval in seconds")
 	flag.BoolVar(&logToFile, "log-to-file", true, "If true, logs will be written to a file")
 	flag.BoolVar(&version, "version", false, "Print the version and exit")
+	flag.BoolVar(&web, "web", false, "Start web server")
 }
 
 func syncRequired() bool {
@@ -166,5 +170,20 @@ func main() {
 	}
 
 	startSyncDispatcher()
-	startDaemon(app)
+	if web {
+		startDaemon(app)
+	} else {
+		go startDaemon(app)
+		setWebView()
+	}
+}
+
+func setWebView() {
+	URL := fmt.Sprintf("http://localhost:%d", port)
+	w := webview.New(false)
+	defer w.Destroy()
+	w.SetTitle("VarnamD")
+	w.SetSize(800, 600, webview.HintNone)
+	w.Navigate(URL)
+	w.Run()
 }
