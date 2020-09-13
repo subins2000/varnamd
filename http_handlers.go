@@ -3,18 +3,17 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/golang/groupcache"
-	"github.com/gorilla/mux"
+	"github.com/labstack/echo/v4"
 	"github.com/varnamproject/libvarnam-golang"
 )
 
@@ -24,6 +23,7 @@ var errCacheSkipped = errors.New("cache skipped")
 // Data will be set if the cache returns CacheSkipped
 type varnamCacheContext struct {
 	Data []byte
+	context.Context
 }
 
 type standardResponse struct {
@@ -32,13 +32,8 @@ type standardResponse struct {
 	At      string `json:"at"`
 }
 
-func newStandardResponse(err string) standardResponse {
-	s := standardResponse{Success: true, Error: "", At: time.Now().UTC().String()}
-	if err != "" {
-		s.Error = err
-		s.Success = false
-	}
-	return s
+func newStandardResponse() standardResponse {
+	return standardResponse{Success: true, At: time.Now().UTC().String()}
 }
 
 type transliterationResponse struct {
@@ -58,85 +53,15 @@ type downloadResponse struct {
 	standardResponse
 }
 
-type requestParams struct {
-	langCode      string
-	word          string
-	downloadStart int
+// Args to read.
+type args struct {
+	LangCode string `json:"lang"`
+	Text     string `json:"text"`
 }
 
-func parseParams(r *http.Request) *requestParams {
-	params := mux.Vars(r)
-	downloadStart, _ := strconv.Atoi(params["downloadStart"])
-	return &requestParams{langCode: params["langCode"], word: params["word"],
-		downloadStart: downloadStart}
-}
+func handleStatus(c echo.Context) error {
+	uptime := time.Since(startedAt)
 
-func corsHandler(h http.Handler) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-		} else {
-			h.ServeHTTP(w, r)
-		}
-	}
-}
-
-func recoverHandler(next http.Handler) http.Handler {
-	fn := func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if err := recover(); err != nil {
-				stack := make([]byte, 1024)
-				stack = stack[:runtime.Stack(stack, false)]
-				log.Printf("panic: %s\n%s", err, stack)
-				http.Error(w, http.StatusText(500), 500)
-			}
-		}()
-		next.ServeHTTP(w, r)
-	}
-	return http.HandlerFunc(fn)
-}
-
-func renderError(w http.ResponseWriter, err error) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		errorData := newStandardResponse(err.Error())
-		json.NewEncoder(w).Encode(errorData)
-	}
-}
-
-func renderGzippedJSON(w http.ResponseWriter, data []byte) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Encoding", "gzip")
-	w.Write(data)
-}
-
-func renderJSON(w http.ResponseWriter, data interface{}) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(data)
-}
-
-func getLanguageAndWord(r *http.Request) (langCode string, word string) {
-	params := mux.Vars(r)
-	langCode = params["langCode"]
-	word = params["word"]
-	return
-}
-
-func getLangCode(r *http.Request) string {
-	params := mux.Vars(r)
-	return params["langCode"]
-}
-
-func getWord(r *http.Request) string {
-	params := mux.Vars(r)
-	return params["word"]
-}
-
-func statusHandler(w http.ResponseWriter, r *http.Request) {
-	uptime := time.Now().Sub(startedAt)
 	resp := struct {
 		Version string `json:"version"`
 		Uptime  string `json:"uptime"`
@@ -144,72 +69,90 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		varnamdVersion,
 		uptime.String(),
-		newStandardResponse(""),
+		newStandardResponse(),
 	}
 
-	renderJSON(w, resp)
+	return c.JSON(http.StatusOK, resp)
 }
 
-func transliterationHandler(w http.ResponseWriter, r *http.Request) {
-	langCode, word := getLanguageAndWord(r)
+func handleTransliteration(c echo.Context) error {
+	var (
+		langCode = c.Param("langCode")
+		word     = c.Param("word")
+	)
+
 	words, err := transliterate(langCode, word)
 	if err != nil {
-		renderError(w, err)
-	} else {
-		renderJSON(w,
-			transliterationResponse{standardResponse: newStandardResponse(""), Result: words.([]string), Input: word})
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
 	}
+
+	return c.JSON(http.StatusOK, transliterationResponse{standardResponse: newStandardResponse(), Result: words.([]string), Input: word})
 }
 
-func reverseTransliterationHandler(w http.ResponseWriter, r *http.Request) {
-	langCode, word := getLanguageAndWord(r)
+func handleReverseTransliteration(c echo.Context) error {
+	var (
+		langCode = c.Param("langCode")
+		word     = c.Param("word")
+	)
+
 	result, err := reveseTransliterate(langCode, word)
 	if err != nil {
-		renderError(w, err)
-	} else {
-		response := struct {
-			standardResponse
-			Result string `json:"result"`
-		}{
-			newStandardResponse(""),
-			result.(string),
-		}
-		renderJSON(w, response)
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error transliterating given string. message: %s", err.Error()))
 	}
+
+	response := struct {
+		standardResponse
+		Result string `json:"result"`
+	}{
+		newStandardResponse(),
+		result.(string),
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
-func metadataHandler(w http.ResponseWriter, r *http.Request) {
-	schemeIdentifier, _ := getLanguageAndWord(r)
-	getOrCreateHandler(schemeIdentifier, func(handle *libvarnam.Varnam) (data interface{}, err error) {
+func handleMetadata(c echo.Context) error {
+	var schemeIdentifier = c.Param("langCode")
+
+	data, err := getOrCreateHandler(schemeIdentifier, func(handle *libvarnam.Varnam) (data interface{}, err error) {
 		details, err := handle.GetCorpusDetails()
 		if err != nil {
-			renderError(w, err)
-			return
+			return nil, err
 		}
-		renderJSON(w, &metaResponse{Result: details, standardResponse: newStandardResponse("")})
-		return
-	})
-}
 
-func downloadHandler(w http.ResponseWriter, r *http.Request) {
-	params := parseParams(r)
-	if params.downloadStart < 0 {
-		renderError(w, errors.New("Invalid parameters"))
-		return
+		return &metaResponse{Result: details, standardResponse: newStandardResponse()}, nil
+	})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
 	}
 
-	fillCache := func(ctx groupcache.Context, key string, dest groupcache.Sink) error {
+	return c.JSON(http.StatusOK, data)
+}
+
+func handleDownload(c echo.Context) error {
+	var (
+		langCode = c.Param("langCode")
+		start, _ = strconv.Atoi(c.Param("downloadStart"))
+	)
+
+	if start < 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid parameter")
+	}
+
+	fillCache := func(ctx context.Context, key string, dest groupcache.Sink) error {
 		// cache miss, fetch from DB
 		// key is in the form <schemeIdentifier>+<downloadStart>
 		parts := strings.Split(key, "+")
-		schemeId := parts[0]
+		schemeID := parts[0]
 		downloadStart, _ := strconv.Atoi(parts[1])
-		words, err := getWords(schemeId, downloadStart)
+
+		words, err := getWords(schemeID, downloadStart)
 		if err != nil {
 			return err
 		}
 
-		response := downloadResponse{Count: len(words), Words: words, standardResponse: newStandardResponse("")}
+		response := downloadResponse{Count: len(words), Words: words, standardResponse: newStandardResponse()}
+
 		b, err := json.Marshal(response)
 		if err != nil {
 			return err
@@ -218,17 +161,21 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		// gzipping the response so that it can be served directly
 		var gb bytes.Buffer
 		gWriter := gzip.NewWriter(&gb)
-		defer gWriter.Close()
-		gWriter.Write(b)
-		gWriter.Flush()
+
+		defer func() { _ = gWriter.Close() }()
+
+		_, _ = gWriter.Write(b)
+		_ = gWriter.Flush()
 
 		if len(words) < downloadPageSize {
-			varnamCtx := ctx.(*varnamCacheContext)
+			varnamCtx, _ := ctx.(*varnamCacheContext)
 			varnamCtx.Data = gb.Bytes()
+
 			return errCacheSkipped
 		}
 
-		dest.SetBytes(gb.Bytes())
+		_ = dest.SetBytes(gb.Bytes())
+
 		return nil
 	}
 
@@ -245,57 +192,76 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	})
 
-	cacheGroup := cacheGroups[params.langCode]
+	cacheGroup := cacheGroups[langCode]
 	ctx := varnamCacheContext{}
+
 	var data []byte
-	if err := cacheGroup.Get(&ctx, fmt.Sprintf("%s+%d", params.langCode, params.downloadStart), groupcache.AllocatingByteSliceSink(&data)); err != nil {
+	if err := cacheGroup.Get(&ctx, fmt.Sprintf("%s+%d", langCode, start), groupcache.AllocatingByteSliceSink(&data)); err != nil {
 		if err == errCacheSkipped {
-			renderGzippedJSON(w, ctx.Data)
-			return
+			c.Response().Header().Set("Content-Encoding", "gzip")
+			return c.Blob(http.StatusOK, "application/json; charset=utf-8", ctx.Data)
 		}
 
-		renderError(w, err)
-		return
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
 	}
 
-	renderGzippedJSON(w, data)
+	c.Response().Header().Set("Content-Encoding", "gzip")
+	return c.Blob(http.StatusOK, "application/json; charset=utf-8", data)
 }
 
-func languagesHandler(w http.ResponseWriter, r *http.Request) {
-	renderJSON(w, schemeDetails)
+func handleLanguages(c echo.Context) error {
+	return c.JSON(http.StatusOK, schemeDetails)
 }
 
-func learnHandler(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-	var args Args
-	if e := decoder.Decode(&args); e != nil {
-		renderError(w, e)
-		return
+func handlLearn(c echo.Context) error {
+	var a args
+
+	c.Request().Header.Set("Content-Type", "application/json")
+
+	if err := c.Bind(&a); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
 	}
 
-	ch, ok := learnChannels[args.LangCode]
+	ch, ok := learnChannels[a.LangCode]
 	if !ok {
-		renderError(w, errors.New("Unable to find language"))
-		return
+		return echo.NewHTTPError(http.StatusBadRequest, "unable to find language")
 	}
-	go func(word string) { ch <- word }(args.Word)
-	renderJSON(w, "success")
+
+	go func(word string) { ch <- word }(a.Text)
+
+	return c.JSON(http.StatusOK, "success")
 }
 
-func toggleDownloadEnabledStatus(w http.ResponseWriter, r *http.Request, status bool) {
-	params := parseParams(r)
-	err := varnamdConfig.setDownloadStatus(params.langCode, status)
+func toggleDownloadEnabledStatus(langCode string, status bool) (interface{}, error) {
+	if err := varnamdConfig.setDownloadStatus(langCode, status); err != nil {
+		return nil, err
+	}
+
+	return newStandardResponse(), nil
+}
+
+func handleEnableDownload(c echo.Context) error {
+	var (
+		langCode = c.Param("langCode")
+	)
+
+	data, err := toggleDownloadEnabledStatus(langCode, true)
 	if err != nil {
-		renderError(w, err)
-	} else {
-		renderJSON(w, newStandardResponse(""))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
 	}
+
+	return c.JSON(http.StatusOK, data)
 }
 
-func enableDownload(w http.ResponseWriter, r *http.Request) {
-	toggleDownloadEnabledStatus(w, r, true)
-}
+func handleDisableDownload(c echo.Context) error {
+	var (
+		langCode = c.Param("langCode")
+	)
 
-func disableDownload(w http.ResponseWriter, r *http.Request) {
-	toggleDownloadEnabledStatus(w, r, false)
+	data, err := toggleDownloadEnabledStatus(langCode, false)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
+	}
+
+	return c.JSON(http.StatusOK, data)
 }

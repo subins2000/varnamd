@@ -5,49 +5,63 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
-	"github.com/gorilla/mux"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 func startDaemon() {
 	initLanguageChannels()
 	initLearnChannels()
-	r := mux.NewRouter()
-	r.HandleFunc("/tl/{langCode}/{word}", transliterationHandler).Methods("GET")
-	r.HandleFunc("/rtl/{langCode}/{word}", reverseTransliterationHandler).Methods("GET")
-	r.HandleFunc("/meta/{langCode}", metadataHandler).Methods("GET")
-	r.HandleFunc("/download/{langCode}/{downloadStart}", downloadHandler).Methods("GET")
-	r.HandleFunc("/learn", learnHandler).Methods("POST")
-	r.HandleFunc("/languages", languagesHandler).Methods("GET")
-	r.HandleFunc("/status", statusHandler).Methods("GET")
-	if enableInternalApis {
-		r.HandleFunc("/sync/download/{langCode}/enable", enableDownload).Methods("POST")
-		r.HandleFunc("/sync/download/{langCode}/disable", disableDownload).Methods("POST")
+
+	e := echo.New()
+
+	e.GET("/tl/:langCode/:word", handleTransliteration)
+	e.GET("/rtl/:langCode/:word", handleReverseTransliteration)
+	e.GET("/meta/:langCode:", handleMetadata)
+	e.GET("/download/:langCode/:downloadStart", handleDownload)
+	e.POST("/learn", handlLearn)
+	e.GET("/languages", handleLanguages)
+	e.GET("/status", handleStatus)
+
+	if _, err := os.Stat(filepath.Clean(uiDir)); err != nil {
+		log.Fatal("UI path doesnot exist", err)
 	}
 
-	addUI(r)
+	e.Static("/", filepath.Clean(uiDir))
+
+	if enableInternalApis {
+		e.POST("/sync/download/{langCode}/enable", handleEnableDownload)
+		e.POST("/sync/download/{langCode}/disable", handleDisableDownload)
+	}
 
 	address := fmt.Sprintf("%s:%d", host, port)
 	log.Printf("Listening on %s", address)
+
+	e.Use(middleware.Recover())
+	e.Use(middleware.Logger())
+
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{http.MethodOptions},
+	}))
+
+	e.Use(middleware.SecureWithConfig(middleware.SecureConfig{
+		XSSProtection:      "",
+		ContentTypeNosniff: "",
+		XFrameOptions:      "",
+		HSTSMaxAge:         3600,
+		// ContentSecurityPolicy: "default-src 'self'",
+	}))
+
 	if enableSSL {
-		if err := http.ListenAndServeTLS(address, certFilePath, keyFilePath, recoverHandler(corsHandler(r))); err != nil {
-			log.Fatalln(err)
+		if err := e.StartTLS(address, certFilePath, keyFilePath); err != nil {
+			log.Fatal(err)
 		}
 	} else {
-		if err := http.ListenAndServe(address, recoverHandler(corsHandler(r))); err != nil {
-			log.Fatalln(err)
+		if err := e.Start(address); err != nil {
+			log.Fatal(err)
 		}
 	}
-}
-
-func addUI(r *mux.Router) {
-	if uiDir == "" {
-		return
-	}
-
-	if _, err := os.Stat(uiDir); err != nil {
-		log.Fatalln("UI path doesnot exist", err)
-	}
-
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir(uiDir)))
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -34,34 +33,38 @@ var (
 // varnamd configurations
 // this is populated from various command line flags
 type config struct {
-	upstream           string
-	schemesToDownload  map[string]bool
-	syncIntervalInSecs time.Duration
+	upstream          string
+	schemesToDownload map[string]bool
+	syncInterval      time.Duration
 }
 
 func initConfig() *config {
 	toDownload := make(map[string]bool)
 	schemes := strings.Split(downloadEnabledSchemes, ",")
+
 	for _, scheme := range schemes {
 		s := strings.TrimSpace(scheme)
+
 		if s != "" {
 			if !isValidSchemeIdentifier(s) {
 				panic(fmt.Sprintf("%s is not a valid libvarnam supported scheme", s))
 			}
+
 			toDownload[s] = true
 		}
 	}
 
 	return &config{upstream: upstreamURL, schemesToDownload: toDownload,
-		syncIntervalInSecs: time.Duration(syncIntervalInSecs)}
+		syncInterval: time.Duration(syncIntervalInSecs)}
 }
 
 func (c *config) setDownloadStatus(langCode string, status bool) error {
 	if !isValidSchemeIdentifier(langCode) {
-		return errors.New(fmt.Sprintf("%s is not a valid libvarnam supported scheme", langCode))
+		return fmt.Errorf("%s is not a valid libvarnam supported scheme", langCode)
 	}
 
 	c.schemesToDownload[langCode] = status
+
 	if status {
 		// when varnamd was started without any langcodes to sync, the dispatcher won't be running
 		// in that case, we need to start the dispatcher since we have a new lang code to download now
@@ -74,16 +77,16 @@ func (c *config) setDownloadStatus(langCode string, status bool) error {
 func getConfigDir() string {
 	if runtime.GOOS == "windows" {
 		return path.Join(os.Getenv("localappdata"), ".varnamd")
-	} else {
-		return path.Join(os.Getenv("HOME"), ".varnamd")
 	}
+
+	return path.Join(os.Getenv("HOME"), ".varnamd")
 }
 
 func getLogsDir() string {
 	d := getConfigDir()
 	logsDir := path.Join(d, "logs")
-	err := os.MkdirAll(logsDir, 0777)
-	if err != nil {
+
+	if err := os.MkdirAll(logsDir, 0750); err != nil {
 		panic(err)
 	}
 
@@ -93,18 +96,20 @@ func getLogsDir() string {
 func redirectLogToFile() {
 	year, month, day := time.Now().Date()
 	logfile := path.Join(getLogsDir(), fmt.Sprintf("%d-%d-%d.log", year, month, day))
-	f, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+
+	f, err := os.OpenFile(logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0600)
 	if err != nil {
 		panic(err)
 	}
+
 	log.SetOutput(f)
 }
 
 func init() {
 	flag.IntVar(&port, "p", 8080, "Run daemon in specified port")
 	flag.IntVar(&maxHandleCount, "max-handle-count", 10, "Maximum number of handles can be opened for each language")
-	flag.StringVar(&host, "host", "", "Host for the varnam daemon server")
-	flag.StringVar(&uiDir, "ui", "", "UI directory path")
+	flag.StringVar(&host, "host", "localhost", "Host for the varnam daemon server")
+	flag.StringVar(&uiDir, "ui", "ui", "UI directory path")
 	flag.BoolVar(&enableInternalApis, "enable-internal-apis", false, "Enable internal APIs")
 	flag.BoolVar(&enableSSL, "enable-ssl", false, "Enables SSL")
 	flag.StringVar(&certFilePath, "cert-file-path", "", "Certificate file path")
@@ -123,9 +128,10 @@ func syncRequired() bool {
 // Starts the sync process only if it is not running
 func startSyncDispatcher() {
 	if syncRequired() && !syncDispatcherRunning {
-		sync := newSyncDispatcher(varnamdConfig.syncIntervalInSecs * time.Second)
+		sync := newSyncDispatcher(varnamdConfig.syncInterval * time.Second)
 		sync.start()
 		sync.runNow() // run one round of sync immediatly rather than waiting for the next interval to occur
+
 		syncDispatcherRunning = true
 	}
 }
@@ -133,12 +139,15 @@ func startSyncDispatcher() {
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 	flag.Parse()
+
 	varnamdConfig = initConfig()
 	startedAt = time.Now()
+
 	if version {
 		fmt.Println(varnamdVersion)
 		os.Exit(0)
 	}
+
 	if logToFile {
 		redirectLogToFile()
 	}
