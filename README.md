@@ -3,6 +3,7 @@
 ```
 git submodule update --init
 cd libvarnam/libvarnam && cmake . && make && ln -s $(realpath libvarnamstatic.a) libvarnam.a && cd -
+go build .
 ./varnamd # Yaaay!
 ```
 
