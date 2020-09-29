@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -275,8 +277,6 @@ func handleLearn(c echo.Context) error {
 		app = c.Get("app").(*App)
 	)
 
-	c.Request().Header.Set("Content-Type", "application/json")
-
 	if err := c.Bind(&a); err != nil {
 		app.log.Printf("error in binding request details for learn, err: %s", err.Error())
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
@@ -291,6 +291,58 @@ func handleLearn(c echo.Context) error {
 	go func(word string) { ch <- word }(a.Text)
 
 	return c.JSON(http.StatusOK, "success")
+}
+
+func handleLearnFileUpload(c echo.Context) error {
+	var (
+		app = c.Get("app").(*App)
+	)
+
+	// Multipart form
+	form, err := c.MultipartForm()
+	if err != nil {
+		return err
+	}
+
+	langCode := c.FormValue("lang")
+	files := form.File["files"]
+
+	_, ok := trainChannel[langCode]
+	if !ok {
+		app.log.Printf("unknown language requested to learn: %s", langCode)
+		return echo.NewHTTPError(http.StatusBadRequest, "unable to find language to train")
+	}
+
+	if len(files) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, "No file uploaded")
+	}
+
+	for _, file := range files {
+		// Source
+		src, err := file.Open()
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+		defer src.Close()
+
+		learnFilePath := getSyncMetadataDir() + "/learn-" + langCode + "-" + file.Filename
+
+		// Destination
+		dst, err := os.Create(learnFilePath)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+		defer dst.Close()
+
+		// Copy
+		if _, err = io.Copy(dst, src); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+
+		learnFromFile(langCode, learnFilePath)
+	}
+
+	return c.HTML(http.StatusOK, "success")
 }
 
 func handleTrain(c echo.Context) error {
