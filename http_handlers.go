@@ -304,6 +304,7 @@ func handleLearnFileUpload(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "No file uploaded")
 	}
 
+	// Copy files first
 	for _, file := range files {
 		// Source
 		src, err := file.Open()
@@ -325,6 +326,41 @@ func handleLearnFileUpload(c echo.Context) error {
 		if _, err = io.Copy(dst, src); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
+	}
+
+	learnFromFile := func(langCode, fileToLearn string) {
+		c.Response().WriteHeader(http.StatusOK)
+
+		start := time.Now()
+
+		sendOutput := func(msg string) {
+			c.Response().Write([]byte(msg))
+			c.Response().Flush()
+		}
+
+		sendOutput(fmt.Sprintf("Learning from %s\n", fileToLearn))
+
+		_, _ = getOrCreateHandler(langCode, func(handle *libvarnam.Varnam) (data interface{}, err error) {
+			learnStatus, err := handle.LearnFromFile(fileToLearn)
+			end := time.Now()
+
+			if err != nil {
+				sendOutput(fmt.Sprintf("Error learning from '%s'\n", err.Error()))
+			} else {
+				sendOutput(fmt.Sprintf("Learned from '%s'. TotalWords: %d, Failed: %d. Took %s\n", fileToLearn, learnStatus.TotalWords, learnStatus.Failed, end.Sub(start)))
+			}
+
+			if err = os.Remove(fileToLearn); err != nil {
+				sendOutput(fmt.Sprintf("Error deleting '%s'. %s\n", fileToLearn, err.Error()))
+			}
+
+			return
+		})
+	}
+
+	// Learn
+	for _, file := range files {
+		learnFilePath := getSyncMetadataDir() + "/learn-" + langCode + "-" + file.Filename
 
 		learnFromFile(langCode, learnFilePath)
 	}
