@@ -34,10 +34,11 @@ func initHandlers(app *App, enableInternalApis bool) *echo.Echo {
 	e.GET("/rtl/:langCode/:word", handleReverseTransliteration)
 	e.GET("/meta/:langCode:", handleMetadata)
 	e.GET("/download/:langCode/:downloadStart", handleDownload)
-	e.POST("/learn", handleLearn)
-	e.POST("/learn/upload", handleLearnFileUpload)
 	e.GET("/languages", handleLanguages)
 	e.GET("/status", handleStatus)
+
+	e.POST("/learn", authUser(handleLearn))
+	e.POST("/learn/upload", authUser(handleLearnFileUpload))
 	e.POST("/train/:langCode", authUser(handleTrain))
 	e.POST("/train/bulk/:langCode", authUser(handleTrainBulk))
 
