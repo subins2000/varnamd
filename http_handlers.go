@@ -294,13 +294,13 @@ func handleLearnFileUpload(c echo.Context) error {
 	langCode := c.FormValue("lang")
 	files := form.File["files"]
 
-	_, ok := trainChannel[langCode]
-	if !ok {
-		app.log.Printf("unknown language requested to learn: %s", langCode)
+	if _, ok := trainChannel[langCode]; !ok {
+		app.log.Printf("learn file upload error: unknown language requested to learn: %s", langCode)
 		return echo.NewHTTPError(http.StatusBadRequest, "unable to find language to train")
 	}
 
 	if len(files) == 0 {
+		app.log.Printf("learn file upload error: user didn't choose any file")
 		return echo.NewHTTPError(http.StatusBadRequest, "No file uploaded")
 	}
 
@@ -309,6 +309,7 @@ func handleLearnFileUpload(c echo.Context) error {
 		// Source
 		src, err := file.Open()
 		if err != nil {
+			app.log.Printf("learn file upload error, err: %s", err.Error())
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 		defer src.Close()
@@ -318,54 +319,56 @@ func handleLearnFileUpload(c echo.Context) error {
 		// Destination
 		dst, err := os.Create(learnFilePath)
 		if err != nil {
+			app.log.Printf("learn file upload error, err: %s", err.Error())
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
 		defer dst.Close()
 
 		// Copy
 		if _, err = io.Copy(dst, src); err != nil {
+			app.log.Printf("learn file upload error, err: %s", err.Error())
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}
-	}
-
-	learnFromFile := func(langCode, fileToLearn string) {
-		c.Response().WriteHeader(http.StatusOK)
-
-		start := time.Now()
-
-		sendOutput := func(msg string) {
-			c.Response().Write([]byte(msg))
-			c.Response().Flush()
-		}
-
-		sendOutput(fmt.Sprintf("Learning from %s\n", fileToLearn))
-
-		_, _ = getOrCreateHandler(langCode, func(handle *libvarnam.Varnam) (data interface{}, err error) {
-			learnStatus, err := handle.LearnFromFile(fileToLearn)
-			end := time.Now()
-
-			if err != nil {
-				sendOutput(fmt.Sprintf("Error learning from '%s'\n", err.Error()))
-			} else {
-				sendOutput(fmt.Sprintf("Learned from '%s'. TotalWords: %d, Failed: %d. Took %s\n", fileToLearn, learnStatus.TotalWords, learnStatus.Failed, end.Sub(start)))
-			}
-
-			if err = os.Remove(fileToLearn); err != nil {
-				sendOutput(fmt.Sprintf("Error deleting '%s'. %s\n", fileToLearn, err.Error()))
-			}
-
-			return
-		})
 	}
 
 	// Learn
 	for _, file := range files {
 		learnFilePath := getSyncMetadataDir() + "/learn-" + langCode + "-" + file.Filename
 
-		learnFromFile(langCode, learnFilePath)
+		learnWordsFromFile(c, langCode, learnFilePath)
 	}
 
-	return c.HTML(http.StatusOK, "success")
+	return c.JSON(http.StatusOK, "success")
+}
+
+func learnWordsFromFile(c echo.Context, langCode string, fileToLearn string) {
+	c.Response().WriteHeader(http.StatusOK)
+
+	start := time.Now()
+
+	sendOutput := func(msg string) {
+		c.Response().Write([]byte(msg))
+		c.Response().Flush()
+	}
+
+	sendOutput(fmt.Sprintf("Learning from %s\n", fileToLearn))
+
+	_, _ = getOrCreateHandler(langCode, func(handle *libvarnam.Varnam) (data interface{}, err error) {
+		learnStatus, err := handle.LearnFromFile(fileToLearn)
+		end := time.Now()
+
+		if err != nil {
+			sendOutput(fmt.Sprintf("Error learning from '%s'\n", err.Error()))
+		} else {
+			sendOutput(fmt.Sprintf("Learned from '%s'. TotalWords: %d, Failed: %d. Took %s\n", fileToLearn, learnStatus.TotalWords, learnStatus.Failed, end.Sub(start)))
+		}
+
+		if err = os.Remove(fileToLearn); err != nil {
+			sendOutput(fmt.Sprintf("Error deleting '%s'. %s\n", fileToLearn, err.Error()))
+		}
+
+		return
+	})
 }
 
 func handleTrain(c echo.Context) error {
