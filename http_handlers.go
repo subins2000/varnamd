@@ -502,3 +502,20 @@ func handleIndex(c echo.Context) error {
 
 	return c.String(http.StatusOK, string(b))
 }
+
+func handlePacks(c echo.Context) error {
+	var (
+		langCode = c.Param("langCode")
+	)
+
+	if langCode != "" {
+		pack := getPackInfo(langCode)
+		return c.JSON(http.StatusOK, pack)
+	}
+
+	if packs := getPacksInfo(); packs != nil {
+		return c.JSON(http.StatusOK, packs)
+	}
+
+	return c.JSON(http.StatusForbidden, "error")
+}
