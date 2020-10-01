@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -33,32 +34,32 @@ func fileExists(filename string) bool {
 	return !info.IsDir()
 }
 
-func getPackInfo(langCode string) *Pack {
-	packs := getPacksInfo()
+func getPackInfo(langCode string) (*Pack, error) {
+	packs, err := getPacksInfo()
 
-	if packs == nil {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 
 	for _, pack := range packs {
 		if pack.LangCode == langCode {
-			return &pack
+			return &pack, nil
 		}
 	}
-	return nil
+	return nil, errors.New("Pack not found")
 }
 
-func getPacksInfo() []Pack {
+func getPacksInfo() ([]Pack, error) {
 	if err := createPacksDir(); err != nil {
-		fmt.Printf("Failed to create packs directory, err: %s\n", err.Error())
-		return nil
+		err := fmt.Errorf("Failed to create packs directory, err: %s", err.Error())
+		return nil, err
 	}
 
 	packsFilePath := getPacksDir() + "/packs.json"
 
 	if !fileExists(packsFilePath) {
-		fmt.Printf("Packs file doesn't exist\n")
-		return nil
+		err := errors.New("Packs file doesn't exist")
+		return nil, err
 	}
 
 	packsFile, _ := ioutil.ReadFile(packsFilePath)
@@ -66,11 +67,11 @@ func getPacksInfo() []Pack {
 	var packsInfo []Pack
 
 	if err := json.Unmarshal(packsFile, &packsInfo); err != nil {
-		fmt.Printf("Parsing packs JSON failed, err: %s\n", err.Error())
-		return nil
+		err := fmt.Errorf("Parsing packs JSON failed, err: %s", err.Error())
+		return nil, err
 	}
 
-	return packsInfo
+	return packsInfo, nil
 }
 
 func createPacksDir() error {

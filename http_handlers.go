@@ -509,13 +509,17 @@ func handlePacks(c echo.Context) error {
 	)
 
 	if langCode != "" {
-		pack := getPackInfo(langCode)
+		pack, err := getPackInfo(langCode)
+		if err != nil {
+			return c.JSON(http.StatusForbidden, err.Error())
+		}
 		return c.JSON(http.StatusOK, pack)
 	}
 
-	if packs := getPacksInfo(); packs != nil {
-		return c.JSON(http.StatusOK, packs)
+	packs, err := getPacksInfo()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusForbidden, "error")
+	return c.JSON(http.StatusOK, packs)
 }
