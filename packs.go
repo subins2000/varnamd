@@ -11,7 +11,7 @@ import (
 
 // PackVersion Details of a pack version
 type PackVersion struct {
-	Identifier  string
+	Identifier  string // Pack identifier is unique across all language packs. Example: ml-basic-1
 	Version     int
 	Description string
 	Size        int
@@ -34,6 +34,36 @@ func fileExists(filename string) bool {
 	return !info.IsDir()
 }
 
+func getPackFilePath(langCode string, packIdentifier string) (string, error) {
+	pack, err := getPackInfo(langCode)
+
+	if err != nil {
+		return "", err
+	}
+
+	var packVersion *PackVersion = nil
+
+	for _, version := range pack.Versions {
+		if version.Identifier == packIdentifier {
+			packVersion = &version
+			break
+		}
+	}
+
+	if packVersion == nil {
+		return "", errors.New("Pack version not found")
+	}
+
+	// Example: .varnamd/ml/ml-basic-1
+	packFilePath := path.Join(getPacksDir(), langCode, packIdentifier)
+
+	if !fileExists(packFilePath) {
+		return "", errors.New("Pack file not found")
+	}
+
+	return packFilePath, nil
+}
+
 func getPackInfo(langCode string) (*Pack, error) {
 	packs, err := getPacksInfo()
 
@@ -46,6 +76,7 @@ func getPackInfo(langCode string) (*Pack, error) {
 			return &pack, nil
 		}
 	}
+
 	return nil, errors.New("Pack not found")
 }
 

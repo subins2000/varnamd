@@ -511,7 +511,7 @@ func handlePacks(c echo.Context) error {
 	if langCode != "" {
 		pack, err := getPackInfo(langCode)
 		if err != nil {
-			return c.JSON(http.StatusForbidden, err.Error())
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 		return c.JSON(http.StatusOK, pack)
 	}
@@ -522,4 +522,23 @@ func handlePacks(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, packs)
+}
+
+func handlePacksDownload(c echo.Context) error {
+	var (
+		packIdentifier = c.Param("packIdentifier")
+		langCode       = c.Param("langCode")
+	)
+
+	if _, err := getPackInfo(langCode); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	packFilePath, err := getPackFilePath(langCode, packIdentifier)
+
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.Attachment(packFilePath, packIdentifier)
 }
