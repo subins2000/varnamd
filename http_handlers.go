@@ -75,6 +75,12 @@ type trainBulkArgs struct {
 	Word    string   `json:"word"`
 }
 
+// PackDownloadRequestArgs is the args to download pack from upstream
+type PackDownloadRequestArgs struct {
+	LangCode              string `json:"lang"`
+	PackVersionIdentifier string `json:"pack"`
+}
+
 func handleStatus(c echo.Context) error {
 	uptime := time.Since(startedAt)
 
@@ -526,19 +532,41 @@ func handlePacks(c echo.Context) error {
 
 func handlePacksDownload(c echo.Context) error {
 	var (
-		packIdentifier = c.Param("packIdentifier")
-		langCode       = c.Param("langCode")
+		packVersionIdentifier = c.Param("packVersionIdentifier")
+		langCode              = c.Param("langCode")
 	)
 
 	if _, err := getPackInfo(langCode); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	packFilePath, err := getPackFilePath(langCode, packIdentifier)
+	packFilePath, err := getPackFilePath(langCode, packVersionIdentifier)
 
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Attachment(packFilePath, packIdentifier)
+	return c.Attachment(packFilePath, packVersionIdentifier)
+}
+
+// varnamd Admin can download packs from upstream
+// This is an internal function
+func handlePackDownloadRequest(c echo.Context) error {
+	var (
+		args PackDownloadRequestArgs
+		app  = c.Get("app").(*App)
+		err  error
+	)
+
+	if err := c.Bind(&args); err != nil {
+		app.log.Printf("error reading request, err: %s", err.Error())
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
+	}
+
+	err = downloadPackFile(args.LangCode, args.PackVersionIdentifier)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error downloading pack: %s", err.Error()))
+	}
+
+	return c.JSON(http.StatusOK, "success")
 }

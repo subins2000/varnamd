@@ -4,9 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
+	"net/http"
 	"os"
 	"path"
+
+	"github.com/labstack/echo/v4"
 )
 
 // PackVersion Details of a pack version
@@ -34,7 +39,43 @@ func fileExists(filename string) bool {
 	return !info.IsDir()
 }
 
-func getPackFilePath(langCode string, packIdentifier string) (string, error) {
+// Download pack from upstream
+func downloadPackFile(langCode string, packVersionIdentifier string) error {
+	fileURL := fmt.Sprintf("%s/packs/%s/%s", varnamdConfig.upstream, langCode, packVersionIdentifier)
+	filePath := path.Join(getPacksDir(), langCode, "a"+packVersionIdentifier)
+
+	resp, err := http.Get(fileURL)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respData, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return errors.New(string(respData))
+	}
+
+	out, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func getPackFilePath(langCode string, packVersionIdentifier string) (string, error) {
 	pack, err := getPackInfo(langCode)
 
 	if err != nil {
@@ -44,7 +85,7 @@ func getPackFilePath(langCode string, packIdentifier string) (string, error) {
 	var packVersion *PackVersion = nil
 
 	for _, version := range pack.Versions {
-		if version.Identifier == packIdentifier {
+		if version.Identifier == packVersionIdentifier {
 			packVersion = &version
 			break
 		}
@@ -55,7 +96,7 @@ func getPackFilePath(langCode string, packIdentifier string) (string, error) {
 	}
 
 	// Example: .varnamd/ml/ml-basic-1
-	packFilePath := path.Join(getPacksDir(), langCode, packIdentifier)
+	packFilePath := path.Join(getPacksDir(), langCode, packVersionIdentifier)
 
 	if !fileExists(packFilePath) {
 		return "", errors.New("Pack file not found")
