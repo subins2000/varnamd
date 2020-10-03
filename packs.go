@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -38,33 +37,117 @@ func fileExists(filename string) bool {
 }
 
 // After a new pack download from upstream, update packs.json with installed packs
-func updatePacksInfo(langCode string, pack PackVersion) {
+func updatePacksInfo(langCode string, pack *Pack, packVersion *PackVersion) error {
+	packs, err := getPacksInfo()
+	if err != nil {
+		return err
+	}
 
+	var (
+		existingPackIndex int
+		existingPack      *Pack = nil
+	)
+
+	for index, packR := range packs {
+		if packR.Identifier == pack.Identifier {
+			existingPackIndex = index
+			existingPack = pack
+			break
+		}
+	}
+
+	if existingPack == nil {
+		// will have one element
+		pack.Versions = []PackVersion{*packVersion}
+
+		// Append new pack
+		packs = append(packs, *pack)
+	} else {
+		// Append new pack version
+		existingPack.Versions = append(existingPack.Versions, *packVersion)
+
+		packs[existingPackIndex] = *existingPack
+	}
+
+	file, err := json.MarshalIndent(packs, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile(getPacksInfoPath(), file, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Download pack from upstream
-func downloadPackFile(langCode string, packVersionIdentifier string) (string, error) {
-	fileURL := fmt.Sprintf("%s/packs/%s/%s", varnamdConfig.upstream, langCode, packVersionIdentifier)
-	filePath := path.Join(getPacksDir(), langCode, "a"+packVersionIdentifier)
+func downloadPackFile(langCode string, packIdentifier string, packVersionIdentifier string) (*Pack, *PackVersion, string, error) {
+	var (
+		pack        *Pack
+		packVersion *PackVersion = nil
+	)
 
-	resp, err := http.Get(fileURL)
+	packInfoURL := fmt.Sprintf("%s/packs/%s/%s", varnamdConfig.upstream, langCode, packIdentifier)
+
+	resp, err := http.Get(packInfoURL)
 	if err != nil {
-		return "", err
+		return nil, nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		respData, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			log.Fatal(err)
+			return nil, nil, "", err
 		}
 
-		return "", errors.New(string(respData))
+		return nil, nil, "", fmt.Errorf(string(respData))
+	}
+
+	if err = json.NewDecoder(resp.Body).Decode(&pack); err != nil {
+		err := fmt.Errorf("Parsing packs JSON failed, err: %s", err.Error())
+		return nil, nil, "", err
+	}
+
+	for _, version := range pack.Versions {
+		if version.Identifier == packVersionIdentifier {
+			packVersion = &version
+			break
+		}
+	}
+
+	if packVersion == nil {
+		return nil, nil, "", fmt.Errorf("Pack version not found")
+	}
+
+	fileURL := fmt.Sprintf("%s/packs/%s/%s/%s/download", varnamdConfig.upstream, langCode, packIdentifier, packVersionIdentifier)
+	fileDir := path.Join(getPacksDir(), langCode)
+	filePath := path.Join(fileDir, packVersionIdentifier)
+
+	if !fileExists(fileDir) {
+		os.MkdirAll(fileDir, 0755)
+	}
+
+	resp, err = http.Get(fileURL)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respData, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, nil, "", err
+		}
+
+		return nil, nil, "", fmt.Errorf(string(respData))
 	}
 
 	out, err := os.Create(filePath)
 	if err != nil {
-		return "", err
+		return nil, nil, "", err
 	}
 	defer out.Close()
 
@@ -72,10 +155,10 @@ func downloadPackFile(langCode string, packVersionIdentifier string) (string, er
 	_, err = io.Copy(out, resp.Body)
 
 	if err != nil {
-		return "", err
+		return nil, nil, "", err
 	}
 
-	return filePath, nil
+	return pack, packVersion, filePath, nil
 }
 
 func getPackFilePath(langCode string, packIdentifier string, packVersionIdentifier string) (string, error) {
@@ -161,11 +244,15 @@ func getPacksInfo() ([]Pack, error) {
 		return nil, err
 	}
 
-	packsFilePath := getPacksDir() + "/packs.json"
+	packsFilePath := getPacksInfoPath()
 
 	if !fileExists(packsFilePath) {
-		err := errors.New("Packs file doesn't exist")
-		return nil, err
+		file, err := os.Create(packsFilePath)
+		if err != nil {
+			return nil, err
+		}
+		file.WriteString("[]")
+		defer file.Close()
 	}
 
 	packsFile, _ := ioutil.ReadFile(packsFilePath)
@@ -180,9 +267,13 @@ func getPacksInfo() ([]Pack, error) {
 	return packsInfo, nil
 }
 
+func getPacksInfoPath() string {
+	return getPacksDir() + "/packs.json"
+}
+
 func createPacksDir() error {
 	packsDir := getPacksDir()
-	return os.MkdirAll(packsDir, 0750)
+	return os.MkdirAll(packsDir, 0644)
 }
 
 func getPacksDir() string {

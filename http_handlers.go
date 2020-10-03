@@ -78,7 +78,8 @@ type trainBulkArgs struct {
 // PackDownloadRequestArgs is the args to download pack from upstream
 type PackDownloadRequestArgs struct {
 	LangCode              string `json:"lang"`
-	PackVersionIdentifier string `json:"pack"`
+	PackIdentifier        string `json:"pack"`
+	PackVersionIdentifier string `json:"version"`
 }
 
 func handleStatus(c echo.Context) error {
@@ -357,7 +358,7 @@ func handleLearnFileUpload(c echo.Context) error {
 		_ = dst.Close()
 		_ = src.Close()
 
-		learnWordsFromFile(c, langCode, dst.Name())
+		learnWordsFromFile(c, langCode, dst.Name(), true)
 	}
 
 	return c.JSON(http.StatusOK, "success")
@@ -598,9 +599,12 @@ func handlePacksDownload(c echo.Context) error {
 // This is an internal function
 func handlePackDownloadRequest(c echo.Context) error {
 	var (
-		args PackDownloadRequestArgs
-		app  = c.Get("app").(*App)
-		err  error
+		args         PackDownloadRequestArgs
+		app          = c.Get("app").(*App)
+		err          error
+		pack         *Pack
+		packVersion  *PackVersion
+		packFilePath string
 	)
 
 	if err := c.Bind(&args); err != nil {
@@ -608,12 +612,19 @@ func handlePackDownloadRequest(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
 	}
 
-	packFilePath, err := downloadPackFile(args.LangCode, args.PackVersionIdentifier)
+	pack, packVersion, packFilePath, err = downloadPackFile(args.LangCode, args.PackIdentifier, args.PackVersionIdentifier)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error downloading pack: %s", err.Error()))
 	}
 
-	learnWordsFromFile(c, args.LangCode, packFilePath)
+	// Learn from pack file and don't remove it
+	learnWordsFromFile(c, args.LangCode, packFilePath, false)
+
+	// Update packs.json with our new installed pack
+	err = updatePacksInfo(args.LangCode, pack, packVersion)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
 
 	return c.JSON(http.StatusOK, "success")
 }
