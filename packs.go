@@ -74,10 +74,25 @@ func downloadPackFile(langCode string, packVersionIdentifier string) (string, er
 }
 
 func getPackFilePath(langCode string, packVersionIdentifier string) (string, error) {
+	if _, err := getPackVersionInfo(langCode, packVersionIdentifier); err != nil {
+		return "", err
+	}
+
+	// Example: .varnamd/ml/ml-basic-1
+	packFilePath := path.Join(getPacksDir(), langCode, packVersionIdentifier)
+
+	if !fileExists(packFilePath) {
+		return "", errors.New("Pack file not found")
+	}
+
+	return packFilePath, nil
+}
+
+func getPackVersionInfo(langCode string, packVersionIdentifier string) (*PackVersion, error) {
 	pack, err := getPackInfo(langCode)
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	var packVersion *PackVersion = nil
@@ -90,17 +105,10 @@ func getPackFilePath(langCode string, packVersionIdentifier string) (string, err
 	}
 
 	if packVersion == nil {
-		return "", errors.New("Pack version not found")
+		return nil, fmt.Errorf("Pack version not found")
 	}
 
-	// Example: .varnamd/ml/ml-basic-1
-	packFilePath := path.Join(getPacksDir(), langCode, packVersionIdentifier)
-
-	if !fileExists(packFilePath) {
-		return "", errors.New("Pack file not found")
-	}
-
-	return packFilePath, nil
+	return packVersion, nil
 }
 
 func getPackInfo(langCode string) (*Pack, error) {

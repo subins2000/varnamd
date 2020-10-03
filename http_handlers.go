@@ -530,6 +530,20 @@ func handlePacks(c echo.Context) error {
 	return c.JSON(http.StatusOK, packs)
 }
 
+func handlePackVersionInfo(c echo.Context) error {
+	var (
+		langCode              = c.Param("langCode")
+		packVersionIdentifier = c.Param("packVersionIdentifier")
+	)
+
+	pack, err := getPackVersionInfo(langCode, packVersionIdentifier)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, pack)
+}
+
 func handlePacksDownload(c echo.Context) error {
 	var (
 		packVersionIdentifier = c.Param("packVersionIdentifier")
