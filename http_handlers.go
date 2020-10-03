@@ -515,7 +515,7 @@ func handlePacks(c echo.Context) error {
 	)
 
 	if langCode != "" {
-		pack, err := getPackInfo(langCode)
+		pack, err := getPacksInfoLang(langCode)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
@@ -530,13 +530,28 @@ func handlePacks(c echo.Context) error {
 	return c.JSON(http.StatusOK, packs)
 }
 
+func handlePackInfo(c echo.Context) error {
+	var (
+		langCode       = c.Param("langCode")
+		packIdentifier = c.Param("packIdentifier")
+	)
+
+	pack, err := getPackInfo(langCode, packIdentifier)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, pack)
+}
+
 func handlePackVersionInfo(c echo.Context) error {
 	var (
 		langCode              = c.Param("langCode")
+		packIdentifier        = c.Param("packIdentifier")
 		packVersionIdentifier = c.Param("packVersionIdentifier")
 	)
 
-	pack, err := getPackVersionInfo(langCode, packVersionIdentifier)
+	pack, err := getPackVersionInfo(langCode, packIdentifier, packVersionIdentifier)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
@@ -546,15 +561,16 @@ func handlePackVersionInfo(c echo.Context) error {
 
 func handlePacksDownload(c echo.Context) error {
 	var (
-		packVersionIdentifier = c.Param("packVersionIdentifier")
 		langCode              = c.Param("langCode")
+		packIdentifier        = c.Param("packIdentifier")
+		packVersionIdentifier = c.Param("packVersionIdentifier")
 	)
 
-	if _, err := getPackInfo(langCode); err != nil {
+	if _, err := getPackVersionInfo(langCode, packIdentifier, packVersionIdentifier); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	packFilePath, err := getPackFilePath(langCode, packVersionIdentifier)
+	packFilePath, err := getPackFilePath(langCode, packIdentifier, packVersionIdentifier)
 
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())

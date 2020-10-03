@@ -37,6 +37,11 @@ func fileExists(filename string) bool {
 	return !info.IsDir()
 }
 
+// After a new pack download from upstream, update packs.json with installed packs
+func updatePacksInfo(langCode string, pack PackVersion) {
+
+}
+
 // Download pack from upstream
 func downloadPackFile(langCode string, packVersionIdentifier string) (string, error) {
 	fileURL := fmt.Sprintf("%s/packs/%s/%s", varnamdConfig.upstream, langCode, packVersionIdentifier)
@@ -73,8 +78,8 @@ func downloadPackFile(langCode string, packVersionIdentifier string) (string, er
 	return filePath, nil
 }
 
-func getPackFilePath(langCode string, packVersionIdentifier string) (string, error) {
-	if _, err := getPackVersionInfo(langCode, packVersionIdentifier); err != nil {
+func getPackFilePath(langCode string, packIdentifier string, packVersionIdentifier string) (string, error) {
+	if _, err := getPackVersionInfo(langCode, packIdentifier, packVersionIdentifier); err != nil {
 		return "", err
 	}
 
@@ -88,8 +93,8 @@ func getPackFilePath(langCode string, packVersionIdentifier string) (string, err
 	return packFilePath, nil
 }
 
-func getPackVersionInfo(langCode string, packVersionIdentifier string) (*PackVersion, error) {
-	pack, err := getPackInfo(langCode)
+func getPackVersionInfo(langCode string, packIdentifier string, packVersionIdentifier string) (*PackVersion, error) {
+	pack, err := getPackInfo(langCode, packIdentifier)
 
 	if err != nil {
 		return nil, err
@@ -111,20 +116,39 @@ func getPackVersionInfo(langCode string, packVersionIdentifier string) (*PackVer
 	return packVersion, nil
 }
 
-func getPackInfo(langCode string) (*Pack, error) {
-	packs, err := getPacksInfo()
+func getPackInfo(langCode string, packIdentifier string) (*Pack, error) {
+	packs, err := getPacksInfoLang(langCode)
 
 	if err != nil {
 		return nil, err
 	}
 
 	for _, pack := range packs {
-		if pack.LangCode == langCode {
+		if pack.Identifier == packIdentifier {
 			return &pack, nil
 		}
 	}
 
 	return nil, errors.New("Pack not found")
+}
+
+// Get packs by language
+func getPacksInfoLang(langCode string) ([]Pack, error) {
+	packs, err := getPacksInfo()
+
+	if err != nil {
+		return nil, err
+	}
+
+	var langPacks []Pack
+
+	for _, pack := range packs {
+		if pack.LangCode == langCode {
+			langPacks = append(langPacks, pack)
+		}
+	}
+
+	return langPacks, nil
 }
 
 func getPacksInfo() ([]Pack, error) {
