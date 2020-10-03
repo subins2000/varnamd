@@ -51,7 +51,7 @@ func updatePacksInfo(langCode string, pack *Pack, packVersion *PackVersion) erro
 	for index, packR := range packs {
 		if packR.Identifier == pack.Identifier {
 			existingPackIndex = index
-			existingPack = pack
+			existingPack = &packR
 			break
 		}
 	}
@@ -88,6 +88,11 @@ func downloadPackFile(langCode string, packIdentifier string, packVersionIdentif
 		pack        *Pack
 		packVersion *PackVersion = nil
 	)
+
+	packInstalled, _ := getPackVersionInfo(langCode, packIdentifier, packVersionIdentifier)
+	if packInstalled != nil {
+		return nil, nil, "", fmt.Errorf("Pack already installed")
+	}
 
 	packInfoURL := fmt.Sprintf("%s/packs/%s/%s", varnamdConfig.upstream, langCode, packIdentifier)
 
