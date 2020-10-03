@@ -316,7 +316,7 @@ func handleLearnFileUpload(c echo.Context) error {
 		}
 
 		// Destination
-		tempDir, err := ioutil.TempDir(os.TempDir(), fmt.Sprintf("varnamd/learn/%s/%s", langCode, time.Now().Format(time.RFC3339)))
+		tempDir, err := ioutil.TempDir(os.TempDir(), "varnamd")
 		if err != nil {
 			app.log.Printf("learn file upload error, err: %s", err.Error())
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
