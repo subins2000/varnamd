@@ -517,7 +517,12 @@ func handlePacks(c echo.Context) error {
 	if langCode != "" {
 		pack, err := getPacksInfoLang(langCode)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+			statusCode := http.StatusBadRequest
+			if err.Error() == "No packs found" {
+				statusCode = http.StatusNotFound
+			}
+
+			return echo.NewHTTPError(statusCode, err.Error())
 		}
 		return c.JSON(http.StatusOK, pack)
 	}
@@ -538,7 +543,12 @@ func handlePackInfo(c echo.Context) error {
 
 	pack, err := getPackInfo(langCode, packIdentifier)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		statusCode := http.StatusBadRequest
+		if err.Error() == "Pack not found" {
+			statusCode = http.StatusNotFound
+		}
+
+		return echo.NewHTTPError(statusCode, err.Error())
 	}
 
 	return c.JSON(http.StatusOK, pack)
@@ -553,7 +563,12 @@ func handlePackVersionInfo(c echo.Context) error {
 
 	pack, err := getPackVersionInfo(langCode, packIdentifier, packVersionIdentifier)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		statusCode := http.StatusBadRequest
+		if err.Error() == "Pack version not found" {
+			statusCode = http.StatusNotFound
+		}
+
+		return echo.NewHTTPError(statusCode, err.Error())
 	}
 
 	return c.JSON(http.StatusOK, pack)

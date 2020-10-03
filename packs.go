@@ -129,7 +129,7 @@ func getPackInfo(langCode string, packIdentifier string) (*Pack, error) {
 		}
 	}
 
-	return nil, errors.New("Pack not found")
+	return nil, fmt.Errorf("Pack not found")
 }
 
 // Get packs by language
@@ -146,6 +146,10 @@ func getPacksInfoLang(langCode string) ([]Pack, error) {
 		if pack.LangCode == langCode {
 			langPacks = append(langPacks, pack)
 		}
+	}
+
+	if len(langPacks) == 0 {
+		return nil, fmt.Errorf("No packs found")
 	}
 
 	return langPacks, nil
