@@ -563,10 +563,12 @@ func handlePackDownloadRequest(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
 	}
 
-	err = downloadPackFile(args.LangCode, args.PackVersionIdentifier)
+	packFilePath, err := downloadPackFile(args.LangCode, args.PackVersionIdentifier)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error downloading pack: %s", err.Error()))
 	}
+
+	learnWordsFromFile(c, args.LangCode, packFilePath)
 
 	return c.JSON(http.StatusOK, "success")
 }

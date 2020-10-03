@@ -10,8 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-
-	"github.com/labstack/echo/v4"
 )
 
 // PackVersion Details of a pack version
@@ -40,13 +38,13 @@ func fileExists(filename string) bool {
 }
 
 // Download pack from upstream
-func downloadPackFile(langCode string, packVersionIdentifier string) error {
+func downloadPackFile(langCode string, packVersionIdentifier string) (string, error) {
 	fileURL := fmt.Sprintf("%s/packs/%s/%s", varnamdConfig.upstream, langCode, packVersionIdentifier)
 	filePath := path.Join(getPacksDir(), langCode, "a"+packVersionIdentifier)
 
 	resp, err := http.Get(fileURL)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -56,12 +54,12 @@ func downloadPackFile(langCode string, packVersionIdentifier string) error {
 			log.Fatal(err)
 		}
 
-		return errors.New(string(respData))
+		return "", errors.New(string(respData))
 	}
 
 	out, err := os.Create(filePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer out.Close()
 
@@ -69,10 +67,10 @@ func downloadPackFile(langCode string, packVersionIdentifier string) error {
 	_, err = io.Copy(out, resp.Body)
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return filePath, nil
 }
 
 func getPackFilePath(langCode string, packVersionIdentifier string) (string, error) {
