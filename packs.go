@@ -28,6 +28,12 @@ type Pack struct {
 	Versions    []PackVersion
 }
 
+type packDownload struct {
+	Pack     *Pack
+	Version  *PackVersion
+	FilePath string
+}
+
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
 	if os.IsNotExist(err) {
@@ -83,7 +89,7 @@ func updatePacksInfo(langCode string, pack *Pack, packVersion *PackVersion) erro
 }
 
 // Download pack from upstream
-func downloadPackFile(langCode string, packIdentifier string, packVersionIdentifier string) (*Pack, *PackVersion, string, error) {
+func downloadPackFile(langCode, packIdentifier, packVersionIdentifier string) (packDownload, error) {
 	var (
 		pack        *Pack
 		packVersion *PackVersion = nil
@@ -91,29 +97,29 @@ func downloadPackFile(langCode string, packIdentifier string, packVersionIdentif
 
 	packInstalled, _ := getPackVersionInfo(langCode, packIdentifier, packVersionIdentifier)
 	if packInstalled != nil {
-		return nil, nil, "", fmt.Errorf("Pack already installed")
+		return packDownload{}, fmt.Errorf("Pack already installed")
 	}
 
 	packInfoURL := fmt.Sprintf("%s/packs/%s/%s", varnamdConfig.upstream, langCode, packIdentifier)
 
 	resp, err := http.Get(packInfoURL)
 	if err != nil {
-		return nil, nil, "", err
+		return packDownload{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		respData, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return nil, nil, "", err
+			return packDownload{}, err
 		}
 
-		return nil, nil, "", fmt.Errorf(string(respData))
+		return packDownload{}, fmt.Errorf(string(respData))
 	}
 
 	if err = json.NewDecoder(resp.Body).Decode(&pack); err != nil {
 		err := fmt.Errorf("Parsing packs JSON failed, err: %s", err.Error())
-		return nil, nil, "", err
+		return packDownload{}, err
 	}
 
 	for _, version := range pack.Versions {
@@ -124,7 +130,7 @@ func downloadPackFile(langCode string, packIdentifier string, packVersionIdentif
 	}
 
 	if packVersion == nil {
-		return nil, nil, "", fmt.Errorf("Pack version not found")
+		return packDownload{}, fmt.Errorf("Pack version not found")
 	}
 
 	fileURL := fmt.Sprintf("%s/packs/%s/%s/%s/download", varnamdConfig.upstream, langCode, packIdentifier, packVersionIdentifier)
@@ -137,22 +143,22 @@ func downloadPackFile(langCode string, packIdentifier string, packVersionIdentif
 
 	resp, err = http.Get(fileURL)
 	if err != nil {
-		return nil, nil, "", err
+		return packDownload{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		respData, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return nil, nil, "", err
+			return packDownload{}, err
 		}
 
-		return nil, nil, "", fmt.Errorf(string(respData))
+		return packDownload{}, fmt.Errorf(string(respData))
 	}
 
 	out, err := os.Create(filePath)
 	if err != nil {
-		return nil, nil, "", err
+		return packDownload{}, err
 	}
 	defer out.Close()
 
@@ -160,13 +166,13 @@ func downloadPackFile(langCode string, packIdentifier string, packVersionIdentif
 	_, err = io.Copy(out, resp.Body)
 
 	if err != nil {
-		return nil, nil, "", err
+		return packDownload{}, err
 	}
 
-	return pack, packVersion, filePath, nil
+	return packDownload{Pack: pack, Version: packVersion, FilePath: filePath}, nil
 }
 
-func getPackFilePath(langCode string, packIdentifier string, packVersionIdentifier string) (string, error) {
+func getPackFilePath(langCode, packIdentifier, packVersionIdentifier string) (string, error) {
 	if _, err := getPackVersionInfo(langCode, packIdentifier, packVersionIdentifier); err != nil {
 		return "", err
 	}
@@ -205,7 +211,7 @@ func getPackVersionInfo(langCode string, packIdentifier string, packVersionIdent
 }
 
 func getPackInfo(langCode string, packIdentifier string) (*Pack, error) {
-	packs, err := getPacksInfoLang(langCode)
+	packs, err := getPacksLangInfo(langCode)
 
 	if err != nil {
 		return nil, err
@@ -221,7 +227,7 @@ func getPackInfo(langCode string, packIdentifier string) (*Pack, error) {
 }
 
 // Get packs by language
-func getPacksInfoLang(langCode string) ([]Pack, error) {
+func getPacksLangInfo(langCode string) ([]Pack, error) {
 	packs, err := getPacksInfo()
 
 	if err != nil {

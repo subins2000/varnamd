@@ -75,11 +75,11 @@ type trainBulkArgs struct {
 	Word    string   `json:"word"`
 }
 
-// PackDownloadRequestArgs is the args to download pack from upstream
-type PackDownloadRequestArgs struct {
-	LangCode              string `json:"lang"`
-	PackIdentifier        string `json:"pack"`
-	PackVersionIdentifier string `json:"version"`
+// packDownloadArgs is the args to request a pack download from upstream
+type packDownloadArgs struct {
+	LangCode   string `json:"lang"`
+	Identifier string `json:"pack"`
+	Version    string `json:"version"`
 }
 
 func handleStatus(c echo.Context) error {
@@ -513,16 +513,18 @@ func handleIndex(c echo.Context) error {
 func handlePacks(c echo.Context) error {
 	var (
 		langCode = c.Param("langCode")
+		app      = c.Get("app").(*App)
 	)
 
 	if langCode != "" {
-		pack, err := getPacksInfoLang(langCode)
+		pack, err := getPacksLangInfo(langCode)
 		if err != nil {
 			statusCode := http.StatusBadRequest
 			if err.Error() == "No packs found" {
 				statusCode = http.StatusNotFound
 			}
 
+			app.log.Printf("error reading packs, err: %s", err.Error())
 			return echo.NewHTTPError(statusCode, err.Error())
 		}
 		return c.JSON(http.StatusOK, pack)
@@ -530,6 +532,7 @@ func handlePacks(c echo.Context) error {
 
 	packs, err := getPacksInfo()
 	if err != nil {
+		app.log.Printf("error reading packs, err: %s", err.Error())
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
@@ -599,12 +602,10 @@ func handlePacksDownload(c echo.Context) error {
 // This is an internal function
 func handlePackDownloadRequest(c echo.Context) error {
 	var (
-		args         PackDownloadRequestArgs
-		app          = c.Get("app").(*App)
-		err          error
-		pack         *Pack
-		packVersion  *PackVersion
-		packFilePath string
+		args           packDownloadArgs
+		app            = c.Get("app").(*App)
+		err            error
+		downloadResult packDownload
 	)
 
 	if err := c.Bind(&args); err != nil {
@@ -612,16 +613,16 @@ func handlePackDownloadRequest(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error getting metadata. message: %s", err.Error()))
 	}
 
-	pack, packVersion, packFilePath, err = downloadPackFile(args.LangCode, args.PackIdentifier, args.PackVersionIdentifier)
+	downloadResult, err = downloadPackFile(args.LangCode, args.Identifier, args.Version)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("error downloading pack: %s", err.Error()))
 	}
 
 	// Learn from pack file and don't remove it
-	learnWordsFromFile(c, args.LangCode, packFilePath, false)
+	learnWordsFromFile(c, args.LangCode, downloadResult.FilePath, false)
 
 	// Update packs.json with our new installed pack
-	err = updatePacksInfo(args.LangCode, pack, packVersion)
+	err = updatePacksInfo(args.LangCode, downloadResult.Pack, downloadResult.Version)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
