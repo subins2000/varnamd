@@ -13,19 +13,19 @@ import (
 
 // PackVersion Details of a pack version
 type PackVersion struct {
-	Identifier  string // Pack identifier is unique across all language packs. Example: ml-basic-1
-	Version     int
-	Description string
-	Size        int
+	Identifier  string `json:"identifier"` // Pack identifier is unique across all language packs. Example: ml-basic-1
+	Version     int    `json:"version"`
+	Description string `json:"description"`
+	Size        int    `json:"size"`
 }
 
 // Pack Details of a pack
 type Pack struct {
-	Identifier  string
-	Name        string
-	Description string
-	LangCode    string
-	Versions    []PackVersion
+	Identifier  string        `json:"identifier"`
+	Name        string        `json:"name"`
+	Description string        `json:"description"`
+	LangCode    string        `json:"lang"`
+	Versions    []PackVersion `json:"versions"`
 }
 
 type packDownload struct {
