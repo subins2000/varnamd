@@ -621,7 +621,7 @@ func handlePackDownloadRequest(c echo.Context) error {
 	// Learn from pack file and don't remove it
 	learnWordsFromFile(c, args.LangCode, downloadResult.FilePath, false)
 
-	// Update packs.json with our new installed pack
+	// Add pack.json with the installed pack versions
 	err = updatePacksInfo(args.LangCode, downloadResult.Pack, downloadResult.Version)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
