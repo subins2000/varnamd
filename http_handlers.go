@@ -619,7 +619,11 @@ func handlePackDownloadRequest(c echo.Context) error {
 	}
 
 	// Learn from pack file and don't remove it
-	importLearningsFromFile(c, args.LangCode, downloadResult.FilePath, false)
+	err = importLearningsFromFile(c, args.LangCode, downloadResult.FilePath, false)
+
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Error importing from '%s'\n", err.Error()))
+	}
 
 	// Add pack.json with the installed pack versions
 	err = updatePacksInfo(args.LangCode, downloadResult.Pack, downloadResult.Version)
