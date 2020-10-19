@@ -34,7 +34,6 @@ type packDownload struct {
 	FilePath string
 }
 
-// TODO cached packs
 var packsInfoCached []Pack
 
 func fileExists(filename string) bool {
@@ -84,6 +83,8 @@ func updatePacksInfo(langCode string, pack *Pack, packVersion *PackVersion) erro
 	if err != nil {
 		return err
 	}
+
+	packsInfoCached = nil
 
 	return nil
 }
@@ -255,6 +256,10 @@ func getPacksInfo() ([]Pack, error) {
 		return nil, err
 	}
 
+	if packsInfoCached != nil {
+		return packsInfoCached, nil
+	}
+
 	var packsInfo []Pack
 
 	files, err := ioutil.ReadDir(getPacksDir())
@@ -290,6 +295,8 @@ func getPacksInfo() ([]Pack, error) {
 			}
 		}
 	}
+
+	packsInfoCached = packsInfo
 
 	return packsInfo, nil
 }
