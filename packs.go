@@ -34,6 +34,9 @@ type packDownload struct {
 	FilePath string
 }
 
+// TODO cached packs
+var packsInfoCached []Pack
+
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
 	if os.IsNotExist(err) {
@@ -71,7 +74,7 @@ func updatePacksInfo(langCode string, pack *Pack, packVersion *PackVersion) erro
 	}
 
 	// Save pack.json
-	packInfoPath := path.Join(getPacksDir(), pack.Identifier, "pack.json")
+	packInfoPath := path.Join(getPacksDir(), pack.LangCode, pack.Identifier, "pack.json")
 	file, err := json.MarshalIndent(pack, "", "  ")
 	if err != nil {
 		return err
@@ -131,7 +134,7 @@ func downloadPackFile(langCode, packIdentifier, packVersionIdentifier string) (p
 	}
 
 	fileURL := fmt.Sprintf("%s/packs/%s/%s/%s/download", varnamdConfig.upstream, langCode, packIdentifier, packVersionIdentifier)
-	fileDir := path.Join(getPacksDir(), langCode)
+	fileDir := path.Join(getPacksDir(), langCode, packIdentifier)
 	filePath := path.Join(fileDir, packVersionIdentifier)
 
 	if !fileExists(fileDir) {
