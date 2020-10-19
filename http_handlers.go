@@ -619,7 +619,7 @@ func handlePackDownloadRequest(c echo.Context) error {
 	}
 
 	// Learn from pack file and don't remove it
-	learnWordsFromFile(c, args.LangCode, downloadResult.FilePath, false)
+	importLearningsFromFile(c, args.LangCode, downloadResult.FilePath, false)
 
 	// Add pack.json with the installed pack versions
 	err = updatePacksInfo(args.LangCode, downloadResult.Pack, downloadResult.Version)
