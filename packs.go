@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -157,14 +158,20 @@ func downloadPackFile(langCode, packIdentifier, packVersionIdentifier string) (p
 		return packDownload{}, fmt.Errorf(string(respData))
 	}
 
+	fz, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return packDownload{}, err
+	}
+	defer fz.Close()
+
 	out, err := os.Create(filePath)
 	if err != nil {
 		return packDownload{}, err
 	}
 	defer out.Close()
 
-	// Write the body to file
-	_, err = io.Copy(out, resp.Body)
+	// Write the gzip decoded content to file
+	_, err = io.Copy(out, fz)
 
 	if err != nil {
 		return packDownload{}, err

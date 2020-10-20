@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -595,7 +596,28 @@ func handlePacksDownload(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.Attachment(packFilePath, packVersionIdentifier)
+	packFileGzipPath := path.Join(packFilePath + ".gzip")
+
+	if !fileExists(packFileGzipPath) {
+		// compress into gzip
+		packFileBytes, err := ioutil.ReadFile(packFilePath)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+
+		var gb bytes.Buffer
+		w := gzip.NewWriter(&gb)
+		w.Write(packFileBytes)
+		w.Close()
+
+		err = ioutil.WriteFile(packFileGzipPath, gb.Bytes(), 0644)
+
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		}
+	}
+
+	return c.Attachment(packFileGzipPath, packVersionIdentifier)
 }
 
 // varnamd Admin can download packs from upstream
