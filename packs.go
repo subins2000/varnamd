@@ -185,8 +185,8 @@ func getPackFilePath(langCode, packIdentifier, packVersionIdentifier string) (st
 		return "", err
 	}
 
-	// Example: .varnamd/ml/ml-basic/ml-basic-1
-	packFilePath := path.Join(getPacksDir(), langCode, packIdentifier, packVersionIdentifier)
+	// Example: .varnamd/ml/ml-basic/ml-basic-1.vpf
+	packFilePath := path.Join(getPacksDir(), langCode, packIdentifier, packVersionIdentifier) + ".vpf"
 
 	if !fileExists(packFilePath) {
 		return "", errors.New("Pack file not found")
